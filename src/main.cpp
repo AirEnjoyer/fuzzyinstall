@@ -67,7 +67,7 @@ int main() {
   }
   package += RunFzf(fzfCommand.c_str());
 
-  std::cout << package << std::endl;
+  std::system(package.c_str());
 
   return 0;
 }
