@@ -1,4 +1,6 @@
 #include <array>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -17,54 +19,50 @@ std::string RunFzf(const char *fzfCommand) {
   return result;
 }
 
-std::string get_package_manager() {
-  std::array<std::string, 6> managers = {"apt-get", "dnf", "xbps-install",
-                                         "pacman",  "apk", "zypper"};
-  for (const auto &manager : managers) {
-    std::string command = "command -v " + manager + " 2>/dev/null";
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"),
-                                                  pclose);
-    if (!pipe) {
-      continue;
-    }
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-      result += buffer.data();
-    }
-    if (!result.empty()) {
-      return manager;
-    }
-  }
-  return "Unknown";
-}
-
 int main() {
-  std::string pm = get_package_manager();
-  if (pm == "Unknown") {
-    std::cout << "No package manager found" << std::endl;
+
+  std::ifstream osReleaseFile("/etc/os-release");
+  if (!osReleaseFile.is_open()) {
+    std::cerr << "Error: Could not open /etc/os-release" << std::endl;
+    return 1;
   }
+
+  std::string line;
+  std::string distro = "Unkown Distro";
+
+  while (std::getline(osReleaseFile, line)) {
+    if (line.rfind("ID=", 0) == 0) {
+      distro = line.substr(3);
+      if (distro.length() >= 2 && distro.front() == '"' &&
+          distro.back() == '"') {
+        distro = distro.substr(1, distro.length() - 2);
+      }
+      break;
+    }
+  }
+  osReleaseFile.close();
+  std::cout << "Linux Distribution: " << distro << std::endl;
 
   std::string fzfCommand;
-  if (pm == "apt-get") {
+  std::string packageManager = "sudo ";
+  if (distro == "Unkown Distro") {
+    std::cerr << "Unknow distro" << std::endl;
+  } else if (distro == "debian" | distro == "linuxmint" | distro == "ubuntu") {
     fzfCommand = "apt list | awk -F'/' '{print $1}' | grep -v \"Listing...\" | "
                  "sort | fzf";
-  } else if (pm == "dnf") {
+    packageManager += "apt-get install ";
+  } else if (distro == "fedora") {
     fzfCommand = "dnf repoquery --qf \"%{name}\" '*' | fzf";
-  } else if (pm == "xbps-install") {
+    packageManager += "dnf install ";
+  } else if (distro == "void") {
     fzfCommand = "xbps-query -Rs | fzf ";
+    packageManager += "xbps-install -Syu ";
+  } else if (distro == "arch") {
+    fzfCommand = "pacman -Slq | fzf";
+    packageManager += "pacman -Syu ";
   }
 
-  std::string package = "sudo " + pm;
-  if (pm == "apt-get" | pm == "dnf") {
-    package += " install ";
-  } else if (pm == "pacman" | pm == "xbps-install") {
-    package += " -S ";
-  } else if (pm == "apk") {
-    package += " add ";
-  } else if (pm == "zypper") {
-    package += " in ";
-  }
+  std::string package = packageManager;
   package += RunFzf(fzfCommand.c_str());
 
   std::system(package.c_str());
