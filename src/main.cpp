@@ -19,16 +19,35 @@ std::string RunFzf(const char *fzfCommand) {
   return result;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+
+  std::string line;
+  std::string distro = "Unkown distro";
+  std::string distroLike = "Unknown base distro";
+  std::string fzfCommand;
+  std::string packageManager = "sudo ";
+  if (argc > 1) {
+    std::string arg1 = argv[1];
+    if (arg1 == "apt") {
+      distro = "debian";
+    } else if (arg1 == "dnf") {
+      distro = "fedora";
+    } else if (arg1 == "xbps") {
+      distro = "void";
+    } else if (arg1 == "pacman") {
+      distro = "arch";
+    } else {
+      std::cout << "Unknown package manager: " << arg1 << std::endl
+                << "Options:"
+                << "apt, dnf, xbps, pacman" << std::endl;
+    }
+  }
 
   std::ifstream osReleaseFile("/etc/os-release");
   if (!osReleaseFile.is_open()) {
     std::cerr << "Error: Could not open /etc/os-release" << std::endl;
     return 1;
   }
-
-  std::string line;
-  std::string distro = "Unkown Distro";
 
   while (std::getline(osReleaseFile, line)) {
     if (line.rfind("ID=", 0) == 0) {
@@ -37,27 +56,34 @@ int main() {
           distro.back() == '"') {
         distro = distro.substr(1, distro.length() - 2);
       }
-      break;
+    }
+
+    if (line.rfind("ID_LIKE=", 0) == 0) {
+      distroLike = line.substr(8);
+      if (distroLike.length() >= 2 && distroLike.front() == '"' &&
+          distro.back() == '"') {
+        distro = distroLike.substr(1, distroLike.length() - 2);
+      }
     }
   }
   osReleaseFile.close();
-  std::cout << "Linux Distribution: " << distro << std::endl;
 
-  std::string fzfCommand;
-  std::string packageManager = "sudo ";
-  if (distro == "Unkown Distro") {
+  if (distro == "Unkown distro" && distroLike == "Unknow base distro") {
     std::cerr << "Unknow distro" << std::endl;
-  } else if (distro == "debian" | distro == "linuxmint" | distro == "ubuntu") {
+    return 1;
+  } else if (distro == "debian" | distroLike == "ubuntu" |
+             distroLike == "debian") {
     fzfCommand = "apt list | awk -F'/' '{print $1}' | grep -v \"Listing...\" | "
                  "sort | fzf";
     packageManager += "apt-get install ";
-  } else if (distro == "fedora") {
+  } else if (distro == "fedora" | distroLike == "rhel fedora" |
+             distroLike == "fedora") {
     fzfCommand = "dnf repoquery --qf \"%{name}\" '*' | fzf";
     packageManager += "dnf install ";
   } else if (distro == "void") {
     fzfCommand = "xbps-query -Rs | fzf ";
     packageManager += "xbps-install -Syu ";
-  } else if (distro == "arch") {
+  } else if (distro == "arch" | distroLike == "arch") {
     fzfCommand = "pacman -Slq | fzf";
     packageManager += "pacman -Syu ";
   }
